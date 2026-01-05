@@ -72,11 +72,13 @@ pip install timm  # 用于 ResNet50
 VLCD_reproduce/
 ├── configs/
 │   └── vlcd/
-│       └── vlcd_levir.py          # VLCD 配置文件
+│       ├── vlcd_levir.py          # VLCD ResNet 版本配置
+│       └── vlcd_levir_vit.py      # VLCD ViT 版本配置
 ├── mmseg/
 │   └── models/
 │       ├── backbones/
-│       │   └── side_fusion_network.py  # Side Fusion Network
+│       │   ├── side_fusion_network.py  # ResNet Side Fusion
+│       │   └── side_fusion_vit.py      # ViT Side Fusion
 │       ├── necks/
 │       │   └── cfc_module.py           # CFC 模块
 │       ├── segmentors/
@@ -115,24 +117,35 @@ data/LEVIR-CD/
 
 ### 2. 下载预训练权重
 
-下载 CLIP 预训练权重：
+下载 CLIP 预训练权重（根据你选择的版本）：
 
 ```bash
 mkdir pretrained
-# 下载 RN50 或 ViT-B-16
+
+# ResNet 版本 (RN50)
 wget https://openaipublic.azureedge.net/clip/models/RN50.pt -O pretrained/RN50.pt
+
+# ViT 版本 (ViT-B-16) - 推荐
+wget https://openaipublic.azureedge.net/clip/models/ViT-B-16.pt -O pretrained/ViT-B-16.pt
 ```
 
 ### 3. 训练模型
 
+**ViT 版本（推荐）**:
 ```bash
-# 单 GPU 训练
-python tools/train.py configs/vlcd/vlcd_levir.py
+# 单 GPU 训练 - ViT
+python tools/train.py configs/vlcd/vlcd_levir_vit.py
 
-# 多 GPU 训练 (4卡)
+# 多 GPU 训练 (4卡) - ViT
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 python -m torch.distributed.launch --nproc_per_node=4 \
-       tools/train.py configs/vlcd/vlcd_levir.py --launcher pytorch
+       tools/train.py configs/vlcd/vlcd_levir_vit.py --launcher pytorch
+```
+
+**ResNet 版本**:
+```bash
+# 单 GPU 训练 - ResNet
+python tools/train.py configs/vlcd/vlcd_levir.py
 ```
 
 ### 4. 测试模型

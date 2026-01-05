@@ -1,5 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-# 精简版 - 仅包含 ChangeCLIP 所需的骨干网络
+# 精简版 - 仅包含 ChangeCLIP 和 VLCD 所需的骨干网络
 
 from .clip_backbone import (
     CLIPResNet,
@@ -16,8 +16,15 @@ from .side_fusion_network import (
     BridgingModule
 )
 
+from .side_fusion_vit import (
+    SideFusionViT,
+    ViTFeatureNetwork,
+    ViTBridgingModule
+)
+
 __all__ = [
     'CLIPResNet', 'CLIPResNetWithAttention', 'CLIPVisionTransformer',
     'CLIPTextEncoder', 'CLIPTextContextEncoder', 'ContextDecoder',
-    'SideFusionCLIP', 'RSFeatureNetwork', 'BridgingModule'
+    'SideFusionCLIP', 'RSFeatureNetwork', 'BridgingModule',
+    'SideFusionViT', 'ViTFeatureNetwork', 'ViTBridgingModule'
 ]
