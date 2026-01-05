@@ -1,0 +1,15 @@
+# VLCD Requirements
+
+torch>=1.10.0
+torchvision>=0.11.0
+mmcv-full>=1.6.0
+mmsegmentation>=0.30.0
+timm>=0.6.0
+opencv-python>=4.5.0
+numpy>=1.19.0
+pillow>=8.0.0
+matplotlib>=3.3.0
+seaborn>=0.11.0
+ftfy>=6.0.0
+regex>=2021.0.0
+tqdm>=4.60.0
