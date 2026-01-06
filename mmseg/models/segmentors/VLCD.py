@@ -195,6 +195,68 @@ class VLCD(BaseSegmentor):
             else:
                 self.auxiliary_head = MODELS.build(auxiliary_head)
     
+    def extract_feat(self, inputs: Tensor) -> List[Tensor]:
+        """
+        Extract features from backbone.
+        
+        Required by BaseSegmentor abstract method.
+        For VLCD, we use extract_feat_with_fusion instead.
+        
+        Args:
+            inputs: Input images [B, 3, H, W]
+            
+        Returns:
+            List of features from backbone
+        """
+        # Use CLIP backbone directly for basic feature extraction
+        return self.backbone(inputs)
+    
+    def _forward(self, inputs: Tensor, data_samples: OptSampleList = None):
+        """
+        Network forward process without post-processing.
+        
+        Required by BaseSegmentor abstract method.
+        
+        Args:
+            inputs: Input tensor
+            data_samples: Data samples (optional)
+            
+        Returns:
+            Tuple of tensors from decode head
+        """
+        # Split into T1 and T2
+        inputsA = inputs[:, :3, :, :]
+        inputsB = inputs[:, 3:, :, :]
+        
+        # Extract fused features
+        xA = self.extract_feat_with_fusion(inputsA)
+        xB = self.extract_feat_with_fusion(inputsB)
+        
+        # Get text prompts
+        if data_samples is not None:
+            textA, textB = self.get_cls_text(data_samples)
+        else:
+            # Use default text if no data_samples
+            textA = torch.cat([tokenize(c, context_length=77) 
+                              for c in ['background', 'change area']]).unsqueeze(0)
+            textB = textA.clone()
+            textA = textA.to(inputs.device)
+            textB = textB.to(inputs.device)
+        
+        # Process with context decoder
+        text_embA, x_clipA, _ = self.after_extract_feat_vlcd(xA, textA)
+        text_embB, x_clipB, _ = self.after_extract_feat_vlcd(xB, textB)
+        
+        # Apply CFC module
+        change_feats = self.cfc(x_clipA, x_clipB, text_embA, text_embB)
+        
+        # FPN neck
+        if self.with_neck:
+            change_feats = list(self.neck(change_feats))
+        
+        # Return features (for tensor mode)
+        return change_feats
+    
     def extract_feat_with_fusion(self, inputs: Tensor) -> List[Tensor]:
         """
         Extract features using Side Fusion Network.
