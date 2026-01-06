@@ -1,20 +1,87 @@
 
-# VLCD ViT Configuration for LEVIR-CD Dataset
-# Based on ChangeCLIP ViT-B-16 version
-
 _base_ = [
     '../_base_/datasets/base_cd.py',
     '../_base_/default_runtime.py', 
     '../_base_/schedules/schedule_160k.py']
-
 import os
-data_root = os.path.join(os.environ.get("CDPATH"), 'LEVIR-CD/cut_data')
+# data_root = os.path.join(os.environ.get("CDPATH"), 'Gloucester-SAR')
+data_root = '/home/yr/code/CD/Data/Gloucester-SAR'
 
 metainfo = dict(
-                classes=('background', 'building'),
+                classes=('background', 'wetland'),
                 palette=[[0, 0, 0], [255, 255, 255]])
 
 crop_size = (256, 256)
+train_pipeline = [
+    dict(type='LoadMultipleRSImageFromFile'),
+    dict(type='LoadAnnotations'),
+    ##
+    # # 2. 斑点噪声（最重要！）
+    # dict(
+    #     type='MultiImgSARSpeckleNoise',
+    #     noise_var=0.1,      # 噪声强度：0.05(弱) ~ 0.2(强)
+    #     prob=0.6            # 60%概率应用
+    # ),
+    
+    # # 3. 高斯噪声
+    # dict(
+    #     type='MultiImgGaussianNoise',
+    #     mean=0,
+    #     std=12,             # 标准差
+    #     prob=0.4
+    # ),
+    
+    # # 4. Gamma调整（对比度）
+    # dict(
+    #     type='MultiImgAdjustGamma2',
+    #     gamma_range=(0.7, 1.5),  # Gamma范围
+    #     prob=0.5
+    # ),
+    
+    # # 5. CLAHE（可选，计算开销大）
+    # dict(
+    #     type='MultiImgCLAHE2',
+    #     clip_limit=2.0,
+    #     tile_grid_size=(8, 8),
+    #     prob=0.3
+    # ),
+    # ======================================
+
+    # ========== 几何增强（原有）==========
+    dict(type='MultiImgRandomRotate', prob=0.5, degree=180),
+    dict(type='MultiImgRandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
+    dict(type='MultiImgRandomFlip', prob=0.5, direction='horizontal'),
+    dict(type='MultiImgRandomFlip', prob=0.5, direction='vertical'),
+    # dict(type='MultiImgExchangeTime', prob=0.5),  # 可选：交换时序
+    # ==================================
+    
+    # # ========== 光度学增强（原有）==========
+    # dict(
+    #     type='MultiImgPhotoMetricDistortion',
+    #     brightness_delta=10,
+    #     contrast_range=(0.8, 1.2),
+    #     saturation_range=(0.8, 1.2),
+    #     hue_delta=10
+    # ),
+    # # ====================================
+    
+    # # ========== CutMix（新增）==========
+    # dict(
+    #     type='MultiImgCutMix',
+    #     alpha=1.0,
+    #     prob=0.2            # 20%概率
+    # ),
+    # # =================================
+    # dict(type='MultiImgExchangeTime', prob=0.5),
+    dict(
+        type='MultiImgPhotoMetricDistortion',
+        brightness_delta=10,
+        contrast_range=(0.8, 1.2),),
+        # saturation_range=(0.8, 1.2),
+        # hue_delta=10),
+    dict(type='ConcatCDInput'),
+    dict(type='PackCDInputs')
+]
 data_preprocessor = dict(
     size=crop_size,
     type='SegDataPreProcessor',
@@ -23,7 +90,6 @@ data_preprocessor = dict(
 
 norm_cfg = dict(type='SyncBN', requires_grad=True)
 find_unused_parameters = True
-
 # VLCD ViT Model Configuration
 model = dict(
     type='VLCD',
@@ -113,38 +179,50 @@ model = dict(
     test_cfg=dict(mode='whole')
 )
 
-# AdamW optimizer - simplified configuration
-# Note: CLIP backbone and text_encoder are already frozen in model code (freeze_clip=True)
-# Removing paramwise_cfg to avoid parameter group conflicts
+
+# AdamW optimizer, no weight decay for position embedding & layer norm
+# in backbone
+# optim_wrapper = dict(
+#     _delete_=True,
+#     type='OptimWrapper',
+#     optimizer=dict(type='AdamW', lr=0.00006, betas=(0.9, 0.999), weight_decay=0.01),
+#     # optimizer=dict(
+#     #     type='AdamW', lr=0.00003, betas=(0.9, 0.999), weight_decay=0.01),
+#     accumulative_counts=12,  # 累积4个batch再更新
+#     paramwise_cfg=dict(
+#         custom_keys={
+#             'absolute_pos_embed': dict(decay_mult=0.),
+#             'relative_position_bias_table': dict(decay_mult=0.),
+#             'norm': dict(decay_mult=0.)
+#         }))
+
 optim_wrapper = dict(
     _delete_=True,
     type='OptimWrapper',
     optimizer=dict(
-        type='AdamW', lr=0.0001, betas=(0.9, 0.999), weight_decay=0.01)
+        type='AdamW', lr=0.00006, betas=(0.9, 0.999), weight_decay=0.01)
 )
 
-param_scheduler = [
-    dict(
-        type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=1500),
-    dict(
-        type='PolyLR',
-        eta_min=0.0,
-        power=1.0,
-        begin=1500,
-        end=40000,
-        by_epoch=False,
-    )
-]
+# param_scheduler = [
+#     dict(
+#         type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=1500),
+#     dict(
+#         type='PolyLR',
+#         eta_min=0.0,
+#         power=1.0,
+#         begin=1500,
+#         end=5000,
+#         by_epoch=False,
+#     )
+# ]
 
-# Dataset configuration - smaller batch due to ViT memory usage
 train_dataloader = dict(
-    batch_size=8,                          # ViT requires more memory
+    batch_size=4,
     num_workers=8,
     dataset=dict(
         data_root=data_root,
         metainfo=metainfo,
         ann_file='train.txt'))
-
 val_dataloader = dict(
     batch_size=1,
     num_workers=4,
@@ -152,7 +230,6 @@ val_dataloader = dict(
         data_root=data_root,
         metainfo=metainfo,
         ann_file='val.txt'))
-
 test_dataloader = dict(
     batch_size=1,
     num_workers=4,
@@ -161,15 +238,29 @@ test_dataloader = dict(
         metainfo=metainfo,
         ann_file='test.txt'))
 
-# Training schedule
-train_cfg = dict(type='IterBasedTrainLoop', max_iters=40000, val_interval=1000)
+# training schedule for 20k
+# 1. 延长训练到 40k iters
+train_cfg = dict(
+    type='IterBasedTrainLoop', 
+    max_iters=20000, 
+    val_interval=1000
+)
+
+param_scheduler = [
+    dict(type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=3000),
+    dict(type='PolyLR', eta_min=1e-6, power=0.9, begin=3000, end=20000, by_epoch=False)
+]
+
+# 2. 增加学习率（因为模型更复杂了）
+# optimizer=dict(type='AdamW', lr=0.00006, betas=(0.9, 0.999), weight_decay=0.01)
+
+# train_cfg = dict(type='IterBasedTrainLoop', max_iters=5000, val_interval=500)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
-
 default_hooks = dict(
     timer=dict(type='IterTimerHook'),
     logger=dict(type='LoggerHook', interval=10, log_metric_by_epoch=False),
     param_scheduler=dict(type='ParamSchedulerHook'),
-    checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=2000, save_best='mIoU'),
+    checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=1000, save_best='mIoU', max_keep_ckpts=3),
     sampler_seed=dict(type='DistSamplerSeedHook'),
     visualization=dict(type='SegVisualizationHook'))

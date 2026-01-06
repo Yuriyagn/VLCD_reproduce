@@ -102,19 +102,35 @@ class VLCD(BaseSegmentor):
             self.rs_backbone = MODELS.build(rs_backbone)
         else:
             # Default: Use ResNet50 as RS backbone
-            from .backbones.side_fusion_network import RSFeatureNetwork
+            from ..backbones.side_fusion_network import RSFeatureNetwork
             self.rs_backbone = RSFeatureNetwork(pretrained=True)
         print('[VLCD] RS Feature Network initialized (trainable)')
         
         # Build Bridging Modules
-        # Assume 4 stages with dimensions [256, 512, 1024, 2048]
-        clip_dims = [256, 512, 1024, 2048]
-        rs_dims = [256, 512, 1024, 2048]
-        from .backbones.side_fusion_network import BridgingModule
-        self.bridging_modules = nn.ModuleList([
-            BridgingModule(clip_dim, rs_dim)
-            for clip_dim, rs_dim in zip(clip_dims, rs_dims)
-        ])
+        # Detect backbone type and set dimensions accordingly
+        backbone_type = backbone.get('type', '')
+        if 'ViT' in backbone_type or 'VisionTransformer' in backbone_type:
+            # ViT: all layers have same dimension (width=768 for ViT-B)
+            vit_width = backbone.get('width', 768)
+            clip_dims = [vit_width] * 4  # [768, 768, 768, 768]
+            rs_dims = [vit_width] * 4
+            print(f'[VLCD] Using ViT dimensions: {clip_dims}')
+            # Use ViT-specific bridging module
+            from ..backbones.side_fusion_vit import ViTBridgingModule
+            self.bridging_modules = nn.ModuleList([
+                ViTBridgingModule(dim=vit_width, num_heads=8)
+                for _ in range(4)
+            ])
+        else:
+            # ResNet: multi-scale dimensions
+            clip_dims = [256, 512, 1024, 2048]
+            rs_dims = [256, 512, 1024, 2048]
+            print(f'[VLCD] Using ResNet dimensions: {clip_dims}')
+            from ..backbones.side_fusion_network import BridgingModule
+            self.bridging_modules = nn.ModuleList([
+                BridgingModule(clip_dim, rs_dim)
+                for clip_dim, rs_dim in zip(clip_dims, rs_dims)
+            ])
         print(f'[VLCD] Created {len(self.bridging_modules)} Bridging Modules')
         
         # Context decoder
@@ -135,7 +151,7 @@ class VLCD(BaseSegmentor):
             self.cfc = MODELS.build(cfc_module)
         else:
             # Default CFC configuration
-            from .necks.cfc_module import CFCModule
+            from ..necks.cfc_module import CFCModule
             self.cfc = CFCModule(
                 in_channels=256,
                 out_channels=256,
